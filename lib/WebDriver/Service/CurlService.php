@@ -23,6 +23,7 @@
 
 namespace WebDriver\Service;
 
+use Exception;
 use WebDriver\Exception as WebDriverException;
 
 /**
@@ -37,6 +38,46 @@ class CurlService implements CurlServiceInterface
      */
     public function execute($requestMethod, $url, $parameters = null, $extraOptions = array())
     {
+        $curl = $this->createCurl($requestMethod, $url, $parameters, $extraOptions);
+        $result = $this->processCurl($curl);
+
+        $curlSuccess = false;
+        $limit = 10;
+        $i = 0;
+
+        while(!$curlSuccess && $i < $limit) {
+            try {
+                $this->handleResponse($curl, $requestMethod, $url, $parameters);
+                $curlSuccess = true;
+                curl_close($curl);
+            } catch (WebDriverException $e) {
+                if (curl_errno($curl) != CURLE_COULDNT_CONNECT) {
+                    curl_close($curl);
+                    throw $e;
+                }
+            }
+
+            $i++;
+        }
+
+
+        return $result;
+    }
+
+
+    /**
+     * Create curl resource.
+     *
+     * @param string $requestMethod HTTP request method, e.g., 'GET', 'POST', or 'DELETE'
+     * @param string $url           Request URL
+     * @param array  $parameters    If an array(), they will be posted as JSON parameters
+     *                              If a number or string, "/$params" is appended to url
+     * @param array  $extraOptions  key=>value pairs of curl options to pass to curl_setopt()
+     *
+     * @return resource
+     */
+    protected function createCurl($requestMethod, $url, $parameters = null, $extraOptions = array())
+    {
         $customHeaders = array(
             'Content-Type: application/json;charset=UTF-8',
             'Accept: application/json;charset=UTF-8',
@@ -44,6 +85,7 @@ class CurlService implements CurlServiceInterface
 
         $curl = curl_init($url);
         curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($curl, CURLOPT_TIMEOUT, ini_get('default_socket_timeout'));
 
         switch ($requestMethod) {
             case 'GET':
@@ -88,23 +130,46 @@ class CurlService implements CurlServiceInterface
 
         curl_setopt($curl, CURLOPT_HTTPHEADER, $customHeaders);
 
-        $rawResult = trim(curl_exec($curl));
-        $info = curl_getinfo($curl);
+        return $curl;
+    }
 
+    /**
+     * Handle a response from a curl resource after execute has been made.
+     *
+     * @param resource $curl          The curl resource to retrieve the response information from.
+     * @param string   $requestMethod HTTP request method, e.g., 'GET', 'POST', or 'DELETE'
+     * @param string   $url           Request URL
+     * @param array    $parameters    If an array(), they will be posted as JSON parameters
+     *                                If a number or string, "/$params" is appended to url
+     * @throws Exception If there was an error.
+     */
+    protected function handleResponse($curl, $requestMethod, $url, $parameters)
+    {
         if (CURLE_GOT_NOTHING !== curl_errno($curl) && $error = curl_error($curl)) {
             $message = sprintf(
                 'Curl error thrown for http %s to %s%s',
                 $requestMethod,
                 $url,
                 $parameters && is_array($parameters)
-                ? ' with params: ' . json_encode($parameters) : ''
+                    ? ' with params: ' . json_encode($parameters) : ''
             );
 
             throw WebDriverException::factory(WebDriverException::CURL_EXEC, $message . "\n\n" . $error);
         }
+    }
 
-        curl_close($curl);
+    /**
+     * Returns tuple of result when the provided curl resource is executed. The key is the raw result while the value
+     * contains the info returned from `curl_getinfo`.
+     *
+     * @param resource $curl
+     * @return array
+     */
+    protected function processCurl($curl)
+    {
+        $rawResult = trim(curl_exec($curl));
+        $info = curl_getinfo($curl);
 
-        return array($rawResult, $info);
+        return [$rawResult, $info];
     }
 }
