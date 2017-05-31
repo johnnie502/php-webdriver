@@ -44,6 +44,7 @@ class CurlService implements CurlServiceInterface
 
         $curl = curl_init($url);
         curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($curl, CURLOPT_TIMEOUT, ini_get('default_socket_timeout'));
 
         switch ($requestMethod) {
             case 'GET':
