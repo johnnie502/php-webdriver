@@ -154,9 +154,7 @@ final class Session extends Container
      */
     public function close()
     {
-        $result = $this->curl('DELETE', '');
-
-        return $result['value'];
+        return exec('docker restart stdcheck_chrome_1');
     }
 
     // There's a limit to our ability to exploit the dynamic nature of PHP when it
