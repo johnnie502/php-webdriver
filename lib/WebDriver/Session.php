@@ -151,12 +151,31 @@ final class Session extends Container
      * Close session: /session/:sessionId (DELETE)
      *
      * @return mixed
+     * @throws Exception
      */
     public function close()
     {
-        $result = $this->curl('DELETE', '');
+        try {
+            $result = $this->curl('DELETE', '');
 
-        return $result['value'];
+            return $result['value'];
+        } catch (Exception $e) {
+            $containerName = 'chrome';
+            $container = exec("/usr/bin/docker ps --format '{{.Names}}' |  grep $containerName");
+
+            if (!strpos($container, $containerName)) {
+                //throw exception if chrome container not found, or docker not executable.
+                throw $e;
+            }
+
+            if (exec("/usr/bin/docker restart $container") !== $container) {
+                //throw exception if chrome container not restarted
+                throw $e;
+            }
+
+            return true;
+        }
+
     }
 
     // There's a limit to our ability to exploit the dynamic nature of PHP when it
